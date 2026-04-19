@@ -1,0 +1,79 @@
+---
+title: "wx-cli: WeChat local data CLI with daemon architecture"
+description: "wx-cli is a Rust CLI that decrypts WeChat's SQLCipher databases locally and serves chat history, contacts, Moments, and favorites via a fast background daemon."
+---
+
+wx-cli is a Rust-based command-line tool that gives you direct access to WeChat's locally stored data — without any cloud service, third-party server, or data upload. It works by scanning WeChat's process memory to extract the SQLCipher encryption keys WeChat holds in RAM, then uses those keys to decrypt the local databases on demand. The result is a fast, scriptable interface to your chat history, contacts, Moments feed, favorites, and more, all from a single `wx` binary.
+
+## Features
+
+<CardGroup cols={2}>
+  <Card title="Daemon architecture" icon="server">
+    A background daemon caches decrypted databases and reuses them as long as the file modification time hasn't changed — no repeated decryption on every command.
+  </Card>
+  <Card title="SQLCipher decryption" icon="lock-open">
+    Extracts the raw AES-256-CBC key directly from WeChat's process memory using the macOS Mach VM API or Linux `/proc/<pid>/mem`. No password needed.
+  </Card>
+  <Card title="YAML and JSON output" icon="file-code">
+    Defaults to YAML for human readability and lower token usage in AI pipelines. Pass `--json` to get JSON for use with `jq` or any downstream tool.
+  </Card>
+  <Card title="Cross-platform" icon="laptop">
+    Runs on macOS (Apple Silicon and Intel), Linux (x86\_64 and arm64), and Windows (x86\_64). Install via npm, a one-line curl, or PowerShell.
+  </Card>
+  <Card title="AI-friendly output" icon="sparkles">
+    Designed for AI agent workflows. Install as a skill into Claude Code, Cursor, or Codex with a single `npx skills add jackwener/wx-cli` command.
+  </Card>
+  <Card title="Zero-dependency binary" icon="box">
+    A single statically-linked Rust binary. No runtime, no interpreter, no system libraries required beyond what ships with the OS.
+  </Card>
+</CardGroup>
+
+## How it works
+
+wx-cli follows a four-stage pipeline each time you run a query:
+
+1. **Memory scan** — on `wx init`, the tool attaches to the running WeChat process and scans its heap for the SQLCipher raw key pattern (`x'<64-hex-key><32-hex-salt>'`).
+2. **Key extraction** — extracted keys are saved to `~/.wx-cli/all_keys.json` (mode `0600`) alongside a `config.json` that records where WeChat's database files live.
+3. **Daemon cache** — on the first query after init, `wx` auto-launches a background daemon that decrypts each database into `~/.wx-cli/cache/`. Subsequent queries reuse the cached copy as long as the source file's `mtime` is unchanged.
+4. **CLI queries** — every `wx` subcommand sends a request to the daemon over a Unix socket (or a Windows named pipe) and prints the result as YAML or JSON.
+
+```
+wx (CLI) ──Unix socket──▶ wx-daemon (background process)
+                               │
+                     ┌─────────┴──────────┐
+                  DBCache            contacts cache
+              (mtime-aware reuse)
+```
+
+The daemon directory layout:
+
+```
+~/.wx-cli/
+├── config.json       # WeChat data directory and key file paths
+├── all_keys.json     # Per-database encryption keys (0600)
+├── daemon.sock       # Unix socket
+├── daemon.pid
+├── daemon.log
+└── cache/
+    ├── _mtimes.json  # mtime index for cache invalidation
+    └── *.db          # Decrypted SQLite databases
+```
+
+## Privacy
+
+wx-cli is entirely local. No data is transmitted to any server. The binary contains no analytics, no telemetry, and no network calls other than the GitHub API requests made by the install scripts to fetch the latest release tag. Your WeChat data never leaves your machine.
+
+<Warning>
+  wx-cli is intended for accessing **your own** WeChat data for personal use, research, or development. Do not use it to access data you are not authorized to access.
+</Warning>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Install wx-cli" icon="download" href="/installation">
+    Install the `wx` binary on macOS, Linux, or Windows using npm, curl, PowerShell, or from source.
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Run your first query in four steps: init, verify, explore history, and search messages.
+  </Card>
+</CardGroup>

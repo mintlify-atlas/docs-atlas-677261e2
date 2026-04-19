@@ -1,0 +1,156 @@
+---
+title: "WeChat Moments commands: feed, search, notifications"
+description: "Reference for wx sns-feed, wx sns-search, and wx sns-notifications. Browse your Moments timeline, search posts, and check like and comment alerts."
+---
+
+The `sns-notifications`, `sns-feed`, and `sns-search` commands let you query your WeChat Moments (SNS) data from the command line. You can browse your timeline, search post content by keyword, and review like and comment notifications — all without opening the WeChat app.
+
+<Note>
+  Moments data is limited to posts your WeChat app has already downloaded to your device. wx-cli reads the local cache; it cannot fetch posts you have not scrolled past inside WeChat.
+</Note>
+
+---
+
+## wx sns-notifications
+
+Shows interaction notifications on your Moments posts: likes and comments on your own posts, and follow-up comments on threads you have previously commented on.
+
+By default, only **unread** notifications are returned. Pass `--include-read` to see all notifications regardless of read status.
+
+### Flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `-n`, `--limit` | integer | `50` | Maximum number of notifications to return |
+| `--since` | `YYYY-MM-DD` | — | Return notifications on or after this date |
+| `--until` | `YYYY-MM-DD` | — | Return notifications on or before this date |
+| `--include-read` | flag | `false` | Include already-read notifications (default: unread only) |
+| `--json` | flag | `false` | Output JSON instead of YAML |
+
+### Output fields
+
+Each notification contains the following fields:
+
+| Field | Description |
+|-------|-------------|
+| `type` | `like` or `comment` |
+| `from_nickname` | Display name of the person who liked or commented |
+| `content` | Comment text (empty for likes) |
+| `feed_preview` | Snippet of the original post that received the interaction |
+| `feed_author` | Author of the original post |
+
+### Examples
+
+```bash
+# Unread notifications only (default)
+wx sns-notifications
+
+# Include read notifications, show up to 100
+wx sns-notifications --include-read -n 100
+
+# Filter by date range
+wx sns-notifications --since 2026-01-01 --until 2026-03-31
+
+# JSON output for piping to jq
+wx sns-notifications --json | jq '.[] | select(.type == "comment")'
+```
+
+---
+
+## wx sns-feed
+
+Browses your locally cached Moments timeline in reverse chronological order. You can filter by author, date range, or both.
+
+### Flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `-n`, `--limit` | integer | `20` | Maximum number of posts to return |
+| `--since` | `YYYY-MM-DD` | — | Return posts on or after this date |
+| `--until` | `YYYY-MM-DD` | — | Return posts on or before this date |
+| `--user` | string | — | Filter by author — matches nickname, alias, or WeChat ID (fuzzy match) |
+| `--json` | flag | `false` | Output JSON instead of YAML |
+
+### Output fields
+
+Each post contains the following fields:
+
+| Field | Description |
+|-------|-------------|
+| `author` | Display name of the post author |
+| `content` | Text body of the post |
+| `media` | Array of attached media items (see [media item structure](#media-item-structure) below) |
+| `media_count` | Number of valid `<media>` nodes parsed from the post XML |
+| `location` | Location tag attached to the post, if any |
+| `timestamp` | Unix timestamp of when the post was published |
+
+#### Media item structure
+
+Each entry in the `media` array has the following fields:
+
+| Field | Description |
+|-------|-------------|
+| `url` | Original media URL |
+| `thumb` | Thumbnail URL |
+| `key` | Encryption key for the media file |
+| `token` | Access token |
+| `md5` | MD5 hash of the file |
+| `enc_idx` | Encryption index |
+| `size` | File size in bytes |
+
+<Note>
+  `media_count` reflects the number of well-formed `<media>` nodes parsed from the post's XML payload. If the XML is malformed, `media_count` returns `0` even if images were visible in the app.
+</Note>
+
+### Examples
+
+```bash
+# Recent 20 posts (default)
+wx sns-feed
+
+# Filter by author (fuzzy match on nickname, alias, or WeChat ID)
+wx sns-feed --user "张三"
+
+# Posts from a specific date range, expand result count
+wx sns-feed --since 2026-04-01 -n 100
+
+# JSON output with a full date range filter
+wx sns-feed --since 2026-01-01 --until 2026-03-31 --json
+```
+
+---
+
+## wx sns-search
+
+Full-text search across the content of locally cached Moments posts. The keyword is matched against post body text (`contentDesc`). You can narrow results by author and date range.
+
+### Flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `keyword` | string | — | **Required.** Search term to match against post content |
+| `-n`, `--limit` | integer | `20` | Maximum number of results to return |
+| `--since` | `YYYY-MM-DD` | — | Return posts on or after this date |
+| `--until` | `YYYY-MM-DD` | — | Return posts on or before this date |
+| `--user` | string | — | Limit results to a specific author (nickname, alias, or WeChat ID, fuzzy match) |
+| `--json` | flag | `false` | Output JSON instead of YAML |
+
+### Output fields
+
+Search results share the same fields as `sns-feed` posts: `author`, `content`, `media`, `media_count`, `location`, and `timestamp`. See [sns-feed output fields](#output-fields-1) for details.
+
+### Examples
+
+```bash
+# Search all locally cached posts for a keyword
+wx sns-search "露营"
+
+# Limit by author
+wx sns-search "婚礼" --user "李四"
+
+# Combine keyword, author, and date filters
+wx sns-search "婚礼" --user "李四" --since 2023-01-01
+
+# Return more results as JSON
+wx sns-search "旅行" -n 100 --json
+```

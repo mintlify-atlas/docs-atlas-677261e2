@@ -1,0 +1,146 @@
+---
+title: "wx-cli internals: key extraction, cache, and IPC protocol"
+description: "wx-cli splits into a CLI client and a daemon that decrypts WeChat's SQLCipher databases. Learn how Mach VM key extraction, mtime caching, and IPC work."
+---
+
+wx-cli is split into two processes: a thin CLI client (`wx`) and a persistent background daemon (`wx-daemon`). The CLI sends every query over a local socket; the daemon owns all database access and caches decrypted files on disk so repeated queries are fast. Key extraction from WeChat's process memory is a one-time setup step performed by `wx init`.
+
+## Architecture overview
+
+```
+wx (CLI) ──Unix socket──▶ wx-daemon (后台进程)
+                               │
+                     ┌─────────┴──────────┐
+                 DBCache               联系人缓存
+             (mtime 感知复用)
+```
+
+The daemon persists decrypted databases and mtime metadata to `~/.wx-cli/cache/`. After a restart, if the source `.db` file's mtime is unchanged the daemon reuses the existing decrypted copy without re-running the AES decryption pipeline.
+
+## File layout
+
+```
+~/.wx-cli/
+├── config.json       # runtime configuration
+├── all_keys.json     # extracted SQLCipher keys (one per database)
+├── daemon.sock       # Unix socket (macOS / Linux)
+├── daemon.pid        # daemon process ID
+├── daemon.log        # daemon stdout/stderr
+└── cache/
+    ├── _mtimes.json  # mtime index — maps db path → (db_mtime, wal_mtime, cache_path)
+    └── *.db          # decrypted plaintext SQLite databases
+```
+
+## Key extraction
+
+WeChat 4.x encrypts its local databases with **SQLCipher 4** (AES-256-CBC, HMAC-SHA512, PBKDF2 with 256,000 iterations). Rather than brute-forcing the key, wx-cli exploits the fact that WCDB caches the fully-derived raw key in the WeChat process's heap memory, formatted as:
+
+```
+x'<64-hex-char AES key><32-hex-char salt>'
+```
+
+`wx init` scans WeChat's live process memory for this 99-byte pattern and matches each found `(key, salt)` pair against the first 16 bytes (the salt) of every `.db` file in `db_dir`. Matched pairs are written to `all_keys.json`.
+
+### Memory scanning per platform
+
+<Tabs>
+  <Tab title="macOS">
+    wx-cli uses the **Mach VM API**:
+
+    1. `task_for_pid` — acquires a task port for the WeChat process (requires `sudo`)
+    2. `mach_vm_region` — enumerates all virtual memory regions
+    3. `mach_vm_read` — reads 2 MB chunks from regions with `PROT_READ | PROT_WRITE`
+
+    WeChat must also be **ad-hoc codesigned** before `task_for_pid` will succeed:
+
+    ```bash
+    codesign --force --deep --sign - /Applications/WeChat.app
+    ```
+
+    Without this step `task_for_pid` returns a non-zero kern return code and `wx init` exits with an error message explaining the fix.
+  </Tab>
+  <Tab title="Linux">
+    wx-cli reads `/proc/<pid>/maps` to enumerate memory regions, then opens `/proc/<pid>/mem` for direct reads. Only regions with `rw` permissions are scanned.
+
+    ```bash
+    sudo wx init   # /proc/<pid>/mem requires root
+    ```
+
+    The scanner identifies the WeChat process by reading `/proc/<pid>/comm` and matching against `wechat` or `weixin` (case-insensitive).
+  </Tab>
+  <Tab title="Windows">
+    wx-cli uses the **Win32 API**:
+
+    1. `CreateToolhelp32Snapshot` + `Process32Next` — finds `Weixin.exe` by name
+    2. `OpenProcess` — opens a handle with `PROCESS_VM_READ | PROCESS_QUERY_INFORMATION`
+    3. `VirtualQueryEx` — enumerates committed `PAGE_READWRITE` memory regions
+    4. `ReadProcessMemory` — reads 2 MB chunks
+
+    Run PowerShell as Administrator before calling `wx init`.
+  </Tab>
+</Tabs>
+
+<Warning>
+  Key extraction reads live process memory and requires elevated privileges on all platforms. The extracted keys are saved locally to `all_keys.json` and never leave the machine.
+</Warning>
+
+## Decryption pipeline
+
+Once keys are available, the daemon decrypts databases on demand using a pure-Rust AES-256-CBC implementation:
+
+1. **Page-by-page decryption** — each 4096-byte SQLCipher page is decrypted independently. Page 1 is special: the first 16 bytes (the salt) are replaced with the SQLite magic header after decryption.
+2. **IV extraction** — the 16-byte IV lives at bytes `[PAGE_SZ - RESERVE_SZ .. PAGE_SZ - RESERVE_SZ + 16]` within each page's 80-byte reserve area.
+3. **WAL application** — if a `.db-wal` file exists alongside the source database, the daemon decrypts and applies its frames to the output file using SQLite's WAL frame format (32-byte WAL header + 24-byte frame header + page data).
+
+The result is a standard plaintext SQLite 3 file that the daemon queries with `rusqlite`.
+
+## Daemon lifecycle and caching
+
+The daemon auto-starts the first time any `wx` command is run after boot. It does not need to be managed manually under normal operation.
+
+### Cache invalidation
+
+`DbCache` tracks both the database file and its WAL file by **modification time in nanoseconds**. On each query:
+
+- If `db_mtime` and `wal_mtime` match the values in `_mtimes.json`, the existing decrypted file is returned immediately.
+- If either mtime has changed (WeChat wrote new messages), the database is re-decrypted and `_mtimes.json` is updated.
+
+This means the first query after WeChat receives new messages incurs a decryption cost; all subsequent queries until the next write are instant.
+
+### Contact cache
+
+The daemon maintains an in-memory contact/group name cache (`Names`) built at startup from the decrypted databases. It is immutable for the lifetime of the daemon process and shared across concurrent IPC requests without locking.
+
+## IPC protocol
+
+All communication between `wx` (client) and `wx-daemon` uses **newline-delimited JSON** over a local socket.
+
+| Platform | Transport |
+|---|---|
+| macOS | Unix domain socket at `~/.wx-cli/daemon.sock` (mode `0600`) |
+| Linux | Unix domain socket at `~/.wx-cli/daemon.sock` (mode `0600`) |
+| Windows | Named pipe `\\.\pipe\wx-cli-daemon` |
+
+### Request format
+
+Requests are a JSON tagged union with a `cmd` discriminant. Examples:
+
+```json
+{ "cmd": "ping" }
+{ "cmd": "sessions", "limit": 20 }
+{ "cmd": "history", "chat": "张三", "limit": 50, "offset": 0 }
+{ "cmd": "search", "keyword": "会议", "chats": ["工作群"], "limit": 100 }
+```
+
+Supported commands: `ping`, `sessions`, `history`, `search`, `contacts`, `unread`, `members`, `new_messages`, `favorites`, `stats`, `sns_notifications`, `sns_feed`, `sns_search`.
+
+### Response format
+
+Every response is a JSON object with an `ok` field:
+
+```json
+{ "ok": true, ...data }
+{ "ok": false, "error": "human-readable error message" }
+```
+
+Each request/response pair is one connection—the daemon spawns a new Tokio task per accepted connection and closes the socket after writing the response.

@@ -1,0 +1,134 @@
+---
+title: "Install wx-cli on macOS, Linux, and Windows systems"
+description: "Install the wx-cli binary via npm (all platforms), curl on macOS/Linux, or PowerShell on Windows. Covers manual download and building from Rust source."
+---
+
+This page covers every way to get the `wx` binary onto your machine. The npm method works on all platforms and requires no elevated privileges for the install step itself. The curl and PowerShell scripts download the correct pre-built binary for your OS and architecture directly from the GitHub release. If you prefer full control, you can also download a binary manually or build from the Rust source.
+
+<Note>
+  You need WeChat running and fully logged in before you run `wx init`. Installation itself does not require WeChat to be open.
+</Note>
+
+## Install
+
+<Tabs>
+  <Tab title="npm (recommended)">
+    Works on macOS, Linux, and Windows. Requires Node.js 16 or later.
+
+    ```bash
+    npm install -g @jackwener/wx-cli
+    ```
+
+    npm places the `wx` binary on your `PATH` automatically. No `sudo` needed for the install step.
+  </Tab>
+
+  <Tab title="macOS / Linux">
+    Downloads the latest release from GitHub and installs to `/usr/local/bin`. Run in any terminal:
+
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/jackwener/wx-cli/main/install.sh | bash
+    ```
+
+    The script detects your OS and CPU architecture and picks the correct asset:
+
+    | Platform | Binary |
+    |---|---|
+    | macOS Apple Silicon | `wx-macos-arm64` |
+    | macOS Intel | `wx-macos-x86_64` |
+    | Linux x86\_64 | `wx-linux-x86_64` |
+    | Linux arm64 | `wx-linux-aarch64` |
+
+    If `/usr/local/bin` is not writable by your user, the script will prompt for `sudo`.
+  </Tab>
+
+  <Tab title="Windows">
+    Run in PowerShell **as Administrator**:
+
+    ```powershell
+    irm https://raw.githubusercontent.com/jackwener/wx-cli/main/install.ps1 | iex
+    ```
+
+    The script downloads `wx-windows-x86_64.exe`, saves it to `%LOCALAPPDATA%\wx-cli\wx.exe`, and adds that directory to your user `PATH`. Reopen your terminal for the `PATH` change to take effect.
+  </Tab>
+
+  <Tab title="Manual download">
+    Download the binary for your platform from the [GitHub releases page](https://github.com/jackwener/wx-cli/releases) and place it on your `PATH`.
+
+    | Platform | File |
+    |---|---|
+    | macOS Apple Silicon | `wx-macos-arm64` |
+    | macOS Intel | `wx-macos-x86_64` |
+    | Linux x86\_64 | `wx-linux-x86_64` |
+    | Linux arm64 | `wx-linux-arm64` |
+    | Windows x86\_64 | `wx-windows-x86_64.exe` |
+
+    On macOS and Linux, mark the binary executable and move it to a directory on your `PATH`:
+
+    ```bash
+    chmod +x wx
+    sudo mv wx /usr/local/bin/
+    ```
+
+    On Windows, rename the file to `wx.exe` and place it in a directory that is already on `%PATH%`, or add its location to `PATH` manually.
+  </Tab>
+
+  <Tab title="Build from source">
+    Requires [Rust](https://rustup.rs) (stable toolchain, edition 2021).
+
+    ```bash
+    git clone git@github.com:jackwener/wx-cli.git
+    cd wx-cli
+    cargo build --release
+    ```
+
+    The compiled binary is at `target/release/wx` (or `target/release/wx.exe` on Windows). Move it to a directory on your `PATH`:
+
+    ```bash
+    sudo mv target/release/wx /usr/local/bin/
+    ```
+
+    The release profile builds with `opt-level = 3`, LTO, single codegen unit, and symbol stripping for a minimal binary size.
+  </Tab>
+</Tabs>
+
+## macOS: ad-hoc code signing
+
+On macOS, WeChat uses the Mach VM API to protect its process memory. Before wx-cli can scan WeChat's memory for encryption keys, you must apply an ad-hoc code signature to WeChat. This is a one-time step you repeat whenever WeChat updates itself.
+
+<Warning>
+  This step is macOS only. Linux and Windows users can skip directly to verifying the install.
+</Warning>
+
+```bash
+# Sign WeChat (run once; repeat after WeChat updates)
+codesign --force --deep --sign - /Applications/WeChat.app
+
+# Restart WeChat and wait for it to fully log in
+killall WeChat && open /Applications/WeChat.app
+```
+
+If `codesign` reports `signature in use`, one of WeChat's bundled libraries already has a conflicting signature. Remove it first:
+
+```bash
+codesign --remove-signature \
+  "/Applications/WeChat.app/Contents/Frameworks/vlc_plugins/librtp_mpeg4_plugin.dylib"
+codesign --force --deep --sign - /Applications/WeChat.app
+```
+
+## Verify the install
+
+After installation, confirm the binary is on your `PATH`:
+
+```bash
+wx --version
+```
+
+You should see the version number (current release: `0.1.9`). If the command is not found, ensure the install directory is on your `PATH` and reopen your terminal.
+
+Once WeChat is running and you have completed `wx init` (see [Quickstart](/quickstart)), verify end-to-end with:
+
+```bash
+wx sessions
+```
+
+If you see a list of recent conversations, everything is working correctly.

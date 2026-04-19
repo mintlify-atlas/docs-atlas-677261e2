@@ -1,0 +1,73 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "wx-cli",
+  "projectDescription": "A Rust-based command-line tool that decrypts and queries WeChat local SQLCipher databases via a background daemon architecture.",
+  "theme": "luma",
+  "primaryColor": "#94cb04",
+  "lightColor": "#545454",
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Command Reference",
+            "pages": [
+              "commands/messages",
+              "commands/moments",
+              "commands/contacts",
+              "commands/export",
+              "commands/daemon"
+            ]
+          },
+          {
+            "group": "Configuration & Architecture",
+            "pages": [
+              "configuration",
+              "architecture",
+              "troubleshooting"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Zero-dependency single Rust binary with millisecond response times",
+    "Background daemon with persistent mtime-aware database cache",
+    "SQLCipher 4 decryption via in-memory key extraction (Mach VM / /proc/mem)",
+    "Full message history, search, and export (markdown/txt/json/yaml)",
+    "Moments (SNS) feed, notifications, and full-text search",
+    "Contacts, group members, favorites, and chat statistics",
+    "YAML output by default (AI-friendly), switchable to JSON",
+    "Cross-platform: macOS, Linux, Windows"
+  ],
+  "publicApiSurface": [
+    "wx init [--force]",
+    "wx sessions [-n N] [--json]",
+    "wx history <chat> [-n N] [--since DATE] [--until DATE] [--type TYPE] [--json]",
+    "wx search <keyword> [--in CHAT] [-n N] [--since DATE] [--until DATE] [--json]",
+    "wx unread [-n N] [--filter TYPES] [--json]",
+    "wx new-messages [-n N] [--json]",
+    "wx contacts [--query NAME] [-n N] [--json]",
+    "wx members <group> [--json]",
+    "wx export <chat> [--format FORMAT] [-o FILE] [-n N] [--since DATE] [--until DATE]",
+    "wx favorites [-n N] [--type TYPE] [--query TEXT] [--json]",
+    "wx stats <chat> [--since DATE] [--until DATE] [--json]",
+    "wx sns-notifications [-n N] [--since DATE] [--until DATE] [--include-read] [--json]",
+    "wx sns-feed [-n N] [--since DATE] [--until DATE] [--user USER] [--json]",
+    "wx sns-search <keyword> [-n N] [--since DATE] [--until DATE] [--user USER] [--json]",
+    "wx daemon status",
+    "wx daemon stop",
+    "wx daemon logs [--follow] [-n N]"
+  ]
+}

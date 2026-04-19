@@ -1,0 +1,254 @@
+---
+title: "wx sessions, history, search, unread, new-messages"
+description: "Reference for wx sessions, wx history, wx search, wx unread, and wx new-messages. Includes all flags, defaults, and real usage examples."
+---
+
+This page covers every messaging and conversation command in wx-cli: `sessions`, `history`, `search`, `unread`, and `new-messages`. Use it as a quick reference when you need the exact flag name, its default value, or a copy-paste example.
+
+---
+
+## wx sessions
+
+List the most recent WeChat conversations.
+
+```bash
+wx sessions
+```
+
+### Flags
+
+<ParamField path="-n, --limit" type="number" default="20">
+  Number of sessions to return.
+</ParamField>
+
+<ParamField path="--json" type="boolean">
+  Output JSON instead of the default YAML.
+</ParamField>
+
+### Examples
+
+```bash
+# Show the 20 most recent sessions (default)
+wx sessions
+
+# Return up to 50 sessions
+wx sessions -n 50
+
+# Output as JSON for piping to jq
+wx sessions --json
+```
+
+<Note>
+Every session includes a `chat_type` field with one of four values:
+
+- `private` — one-to-one conversation
+- `group` — group chat
+- `official_account` — public accounts, subscription accounts, service accounts, and system notifications such as `mphelper` and `qqsafe`
+- `folded` — the two aggregate inboxes WeChat calls "Subscription Accounts" and "Folded Groups"
+</Note>
+
+---
+
+## wx history \<chat\>
+
+View message history for a contact or group. The `<chat>` argument is matched against contact names using fuzzy search.
+
+```bash
+wx history <chat>
+```
+
+### Flags
+
+<ParamField path="-n, --limit" type="number" default="50">
+  Number of messages to return. This is a default to avoid large output, not a hard cap — pass a higher value to pull more history.
+</ParamField>
+
+<ParamField path="--offset" type="number" default="0">
+  Number of messages to skip from the start of the result set. Use with `--limit` for pagination.
+</ParamField>
+
+<ParamField path="--since" type="string">
+  Return only messages on or after this date. Accepts `YYYY-MM-DD`, `YYYY-MM-DD HH:MM`, or `YYYY-MM-DD HH:MM:SS`.
+</ParamField>
+
+<ParamField path="--until" type="string">
+  Return only messages on or before this date. When a bare date is given (e.g. `2026-04-15`), the cutoff is `23:59:59` on that day.
+</ParamField>
+
+<ParamField path="--type" type="string">
+  Filter by message type. Accepted values: `text`, `image`, `voice`, `video`, `sticker`, `location`, `link`, `file`, `call`, `system`.
+</ParamField>
+
+<ParamField path="--json" type="boolean">
+  Output JSON instead of the default YAML.
+</ParamField>
+
+### Examples
+
+```bash
+# Last 50 messages with a contact (default)
+wx history "张三"
+
+# Pull a large chunk of history
+wx history "张三" -n 2000
+
+# Filter by date range
+wx history "AI群" --since 2026-04-01 --until 2026-04-15
+
+# Only image messages
+wx history "张三" --type image
+
+# Paginate: skip the first 100 messages, return the next 100
+wx history "张三" -n 100 --offset 100
+
+# JSON output
+wx history "张三" --json
+```
+
+<Tip>
+The `-n` flag sets a default limit to keep output manageable — it is not a hard cap. Pass a large value such as `-n 5000` to retrieve deep history without any artificial restriction.
+</Tip>
+
+---
+
+## wx search \<keyword\>
+
+Full-library search across all locally cached messages. Optionally scope the search to one or more specific chats.
+
+```bash
+wx search <keyword>
+```
+
+### Flags
+
+<ParamField path="--in" type="string">
+  Restrict results to a specific chat (fuzzy-matched by name). Repeat the flag to search across multiple chats.
+</ParamField>
+
+<ParamField path="-n, --limit" type="number" default="20">
+  Maximum number of results to return.
+</ParamField>
+
+<ParamField path="--since" type="string">
+  Return only messages on or after this date (`YYYY-MM-DD` or with time).
+</ParamField>
+
+<ParamField path="--until" type="string">
+  Return only messages on or before this date (`YYYY-MM-DD` or with time).
+</ParamField>
+
+<ParamField path="--type" type="string">
+  Filter by message type. Accepted values: `text`, `image`, `voice`, `video`, `sticker`, `location`, `link`, `file`, `call`, `system`.
+</ParamField>
+
+<ParamField path="--json" type="boolean">
+  Output JSON instead of the default YAML.
+</ParamField>
+
+### Examples
+
+```bash
+# Search everywhere
+wx search "关键词"
+
+# Return up to 500 results
+wx search "关键词" -n 500
+
+# Scope search to one chat
+wx search "会议" --in "工作群"
+
+# Multiple chats, with a date filter
+wx search "会议" --in "工作群" --in "项目群" --since 2026-01-01
+
+# JSON output piped to jq
+wx search "关键词" --json | jq '.[0].content'
+```
+
+<Note>
+`--in` can be repeated any number of times. When omitted, wx-cli searches across the entire local message database.
+</Note>
+
+---
+
+## wx unread
+
+Show conversations that have unread messages. Optionally filter by conversation type.
+
+```bash
+wx unread
+```
+
+### Flags
+
+<ParamField path="-n, --limit" type="number" default="20">
+  Maximum number of unread sessions to return.
+</ParamField>
+
+<ParamField path="--filter" type="string">
+  Comma-separated list of session types to include. Accepted values: `all`, `private`, `group`, `official`, `folded`. Omitting the flag (or passing `all`) returns every unread session.
+</ParamField>
+
+<ParamField path="--json" type="boolean">
+  Output JSON instead of the default YAML.
+</ParamField>
+
+### Examples
+
+```bash
+# All unread sessions
+wx unread
+
+# Only real-person chats (exclude official accounts and folded inboxes)
+wx unread --filter private,group
+
+# Unread private chats only, as JSON
+wx unread --filter private --json
+
+# Return up to 50 unread sessions
+wx unread -n 50
+```
+
+<Tip>
+Use `--filter private,group` to quickly see only messages from real people, filtering out public accounts and the folded-groups inbox.
+</Tip>
+
+---
+
+## wx new-messages
+
+Retrieve messages that have arrived since the last time this command was run. State is stored locally so each run only returns genuinely new messages.
+
+```bash
+wx new-messages
+```
+
+### Flags
+
+<ParamField path="-n, --limit" type="number" default="200">
+  Maximum number of new messages to return across all sessions.
+</ParamField>
+
+<ParamField path="--json" type="boolean">
+  Output JSON instead of the default YAML.
+</ParamField>
+
+### Examples
+
+```bash
+# Get new messages since the last check
+wx new-messages
+
+# Raise the cap for busy inboxes
+wx new-messages -n 1000
+
+# JSON output — convenient for automation scripts
+wx new-messages --json
+```
+
+<Note>
+wx-cli persists a per-session timestamp snapshot in `~/.wx-cli/last_check.json` after every run. On the very first run there is no saved state, so the command establishes a baseline and returns all messages visible at that moment. Subsequent runs return only messages newer than that baseline.
+</Note>
+
+<Warning>
+If `~/.wx-cli/last_check.json` is deleted or corrupted, wx-cli treats the next run as a first run and re-establishes the baseline. No messages will be lost — they remain in the local database and are accessible via `wx history`.
+</Warning>

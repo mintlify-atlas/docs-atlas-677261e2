@@ -1,0 +1,98 @@
+---
+title: "wx-cli config.json: fields, paths, and platform defaults"
+description: "wx-cli reads config.json from the binary directory, cwd, or ~/.wx-cli/. Set db_dir, keys_file, decrypted_dir, and wechat_process per platform."
+---
+
+wx-cli stores all runtime settings in a single `config.json` file. When you run `wx init`, it auto-detects your WeChat data directory and writes this file for you—manual editing is only needed when auto-detection fails or you want to override a path. Every subsequent `wx` command loads the config before contacting the daemon.
+
+## Config file search order
+
+wx-cli searches for `config.json` in the following order and uses the first file it finds:
+
+<Steps>
+  <Step title="Binary directory">
+    The directory that contains the `wx` executable itself. Useful when you keep the binary and config together in a custom location.
+  </Step>
+  <Step title="Current working directory">
+    The directory from which you invoke the `wx` command.
+  </Step>
+  <Step title="~/.wx-cli/config.json">
+    The default user-level location. `wx init` always writes the config here.
+  </Step>
+</Steps>
+
+<Note>
+  If none of the above paths contain a `config.json`, wx-cli falls back to writing a new file in the binary directory (or the current directory if the binary path is unavailable). Run `wx init` to create a valid config automatically.
+</Note>
+
+## Config file format
+
+All fields are optional—omitting a field causes wx-cli to use the platform default described below.
+
+| Field | Type | Description | Default |
+|---|---|---|---|
+| `db_dir` | string (path) | Path to the WeChat `db_storage` directory containing the encrypted `.db` files. | Auto-detected per platform (see below) |
+| `keys_file` | string (path) | Path to `all_keys.json`, which stores the extracted SQLCipher keys. Relative paths are resolved against the config file's directory. | `<config dir>/all_keys.json` |
+| `decrypted_dir` | string (path) | Directory where the daemon writes decrypted `.db` cache files. Relative paths are resolved against the config file's directory. | `<config dir>/decrypted` |
+| `wechat_process` | string | Process name that `wx init` searches for when scanning memory for keys. | `WeChat` (macOS), `wechat` (Linux), `Weixin.exe` (Windows) |
+
+## Default platform paths
+
+When `db_dir` is omitted, wx-cli uses the following platform-specific defaults:
+
+<Tabs>
+  <Tab title="macOS">
+    ```
+    ~/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files
+    ```
+
+    wx-cli scans subdirectories of this path for a `db_storage` folder, picking the most recently modified one. When running under `sudo`, it reads the `SUDO_USER` environment variable to resolve the correct home directory.
+  </Tab>
+  <Tab title="Linux">
+    ```
+    ~/Documents/xwechat_files
+    ```
+
+    wx-cli also checks `~/.local/share/weixin/data/db_storage` as a fallback for older WeChat installations. Under `sudo`, both the invoking user's home and `/home/$SUDO_USER` are searched.
+  </Tab>
+  <Tab title="Windows">
+    ```
+    %APPDATA%\Tencent\xwechat
+    ```
+
+    wx-cli reads `.ini` files from `%APPDATA%\Tencent\xwechat\config\` to locate the actual data root, then searches for `db_storage` directories inside `xwechat_files`.
+  </Tab>
+</Tabs>
+
+## Example config.json
+
+The following is the bundled `config.example.json`. Copy it to `~/.wx-cli/config.json` and adjust the paths for your system, or simply run `wx init` to have wx-cli generate this file automatically.
+
+```json config.json
+{
+    "db_dir": "D:\\xwechat_files\\your_wxid\\db_storage",
+    "keys_file": "all_keys.json",
+    "decrypted_dir": "decrypted",
+    "wechat_process": "Weixin.exe"
+}
+```
+
+<Tip>
+  Relative paths for `keys_file` and `decrypted_dir` are resolved relative to the directory that contains `config.json`—not the current working directory. Using bare filenames like `"all_keys.json"` keeps everything co-located with the config.
+</Tip>
+
+## When to edit config.json manually
+
+`wx init` handles config creation in the common case. Edit the file manually when:
+
+- Auto-detection picks the wrong WeChat account directory (e.g., you have multiple accounts)
+- Your WeChat data lives on a non-default path (external drive, custom install location)
+- You want `keys_file` or `decrypted_dir` on a different volume for performance or space reasons
+- You run wx-cli in a script that sets a custom `wechat_process` name
+
+After editing, restart the daemon so the new paths take effect:
+
+```bash
+wx daemon stop
+wx sessions   # daemon restarts automatically on next command
+```

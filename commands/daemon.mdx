@@ -1,0 +1,180 @@
+---
+title: "wx daemon: manage the background decryption process"
+description: "Reference for wx daemon status, stop, and logs. The daemon decrypts WeChat databases on demand and caches results for millisecond query response times."
+---
+
+This page covers the `wx daemon` subcommands for managing the background process that powers every `wx` query. The daemon handles database decryption and keeps decrypted copies cached in `~/.wx-cli/cache/` so subsequent queries respond in milliseconds instead of seconds.
+
+## Daemon overview
+
+The daemon starts automatically the first time you run any `wx` command after `init` — you don't need to start it manually. It runs as a background process and communicates with the CLI over an IPC channel.
+
+What the daemon does:
+
+- **Decrypts on demand** — when a query needs a database file, the daemon decrypts it using the key from `all_keys.json` and stores the result in `~/.wx-cli/cache/`.
+- **mtime-aware cache reuse** — before decrypting, the daemon checks whether the source `.db` file (and its `-wal` journal) has changed since the last decryption. If the mtime is unchanged, the cached copy is reused. Decryption only happens when WeChat has written new data.
+- **Prewarming** — on startup the daemon immediately loads contacts and decrypts `session/session.db` and `sns/sns.db` so common queries are already warm.
+- **Persistent cache across restarts** — mtime records are persisted to `~/.wx-cli/cache/_mtimes.json`. When the daemon restarts, it reloads valid cache entries without re-decrypting unchanged files.
+
+<Note>
+The daemon runs entirely on your local machine. No data leaves your device at any point.
+</Note>
+
+---
+
+## wx daemon status
+
+Check whether the daemon is running and print its PID.
+
+```bash
+wx daemon status
+```
+
+**Example output — daemon running:**
+
+```
+wx-daemon 运行中 (PID 84231)
+```
+
+**Example output — daemon not running:**
+
+```
+wx-daemon 未运行
+```
+
+When the daemon is not running and you issue any other `wx` command, it restarts automatically.
+
+---
+
+## wx daemon stop
+
+Gracefully stop the running daemon.
+
+```bash
+wx daemon stop
+```
+
+On macOS and Linux this sends `SIGTERM` to the daemon process. On Windows it calls `taskkill /PID <pid> /F`. After the process exits, the daemon cleans up its socket and PID files.
+
+The next `wx` command you run will start a fresh daemon instance automatically.
+
+<Tip>
+Use `wx daemon stop` before suspending your laptop if you want to ensure a clean restart when you resume. The daemon will re-warm the cache on next use.
+</Tip>
+
+---
+
+## wx daemon logs
+
+View daemon log output written to `~/.wx-cli/daemon.log`.
+
+```bash
+wx daemon logs
+```
+
+### Flags
+
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--lines` | `-n` | `50` | Number of recent log lines to print |
+| `--follow` | `-f` | — | Stream new lines as they are written (tail -f mode) |
+
+### Examples
+
+Print the last 50 lines (default):
+
+```bash
+wx daemon logs
+```
+
+Stream new log lines continuously:
+
+```bash
+wx daemon logs --follow
+```
+
+Print the last 100 lines:
+
+```bash
+wx daemon logs -n 100
+```
+
+Combine `--follow` and `-n` to tail with a longer initial buffer:
+
+```bash
+wx daemon logs --follow -n 100
+```
+
+<Note>
+On macOS and Linux, `--follow` delegates to the system `tail -f` command. On Windows it uses a polling loop with a 500 ms interval.
+</Note>
+
+**Example log output:**
+
+```
+[daemon] wx-daemon 启动 (PID 84231)
+[daemon] DB_DIR: /Users/alice/Library/Containers/com.tencent.xinWeChat/...
+[daemon] 密钥数量: 42
+[daemon] 预热...
+[daemon] 预热完成，联系人 1234 个
+[server] 监听 /Users/alice/.wx-cli/daemon.sock
+[cache] 复用 38 个已解密 DB
+[cache] 解密 message/message_3.db (210ms)
+```
+
+---
+
+## File locations
+
+All daemon runtime files live under `~/.wx-cli/`:
+
+```
+~/.wx-cli/
+├── config.json         # user configuration (db_dir, keys_file, …)
+├── all_keys.json       # extracted database encryption keys
+├── daemon.sock         # Unix socket (macOS / Linux)
+├── daemon.pid          # PID of the running daemon
+├── daemon.log          # daemon log output
+└── cache/
+    ├── _mtimes.json    # mtime index used for cache invalidation
+    └── *.db            # decrypted database copies (named by MD5 of relative key)
+```
+
+<Warning>
+The files in `~/.wx-cli/` contain decrypted WeChat data and encryption keys. The socket file is created with `0600` permissions. Do not expose this directory to other users or sync it to cloud storage.
+</Warning>
+
+---
+
+## Windows note
+
+<Tabs>
+  <Tab title="macOS / Linux">
+    The daemon listens on a Unix domain socket at `~/.wx-cli/daemon.sock`. The socket file is created with `0600` permissions (owner read/write only).
+
+    ```bash
+    wx daemon status
+    wx daemon stop
+    wx daemon logs --follow
+    ```
+  </Tab>
+  <Tab title="Windows">
+    On Windows, the daemon uses a named pipe (`\\.\pipe\wx-cli-daemon`) via the `interprocess` crate instead of a Unix socket. No `daemon.sock` file is created.
+
+    `wx init` must be run from an elevated PowerShell session (Run as Administrator) because reading WeChat process memory requires elevated privileges.
+
+    ```powershell
+    # Run as Administrator
+    wx init
+
+    # Daemon management (no elevation required after init)
+    wx daemon status
+    wx daemon stop
+    wx daemon logs --follow
+    ```
+
+    <Note>
+      `wx daemon stop` on Windows calls `taskkill /PID &lt;pid&gt; /F` to terminate the process.
+    </Note>
+  </Tab>
+</Tabs>

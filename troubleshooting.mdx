@@ -1,0 +1,260 @@
+---
+title: "Troubleshoot wx-cli: errors, permissions, and daemon issues"
+description: "Solutions for wx-cli issues including codesign errors on macOS, init failures, daemon not starting, and database decryption problems."
+---
+
+When something goes wrong, check the daemon logs first—they record every decryption attempt, cache hit/miss, and IPC error. Most issues fall into one of a few categories: missing prerequisites for key extraction, a stale or incorrect config, or a permissions problem.
+
+```bash
+wx daemon logs          # view recent daemon output
+wx daemon logs --follow # stream live logs
+wx daemon status        # check whether the daemon process is running
+```
+
+---
+
+<AccordionGroup>
+  <Accordion title="macOS: codesign fails with 'signature in use'">
+    **Symptom**
+
+    Running the ad-hoc codesign step produces an error like:
+
+    ```
+    /Applications/WeChat.app/Contents/Frameworks/vlc_plugins/librtp_mpeg4_plugin.dylib:
+    signature in use by another process
+    ```
+
+    **Cause**
+
+    One of the bundled VLC plugin dylibs already has a conflicting signature that macOS refuses to overwrite while `--deep` is set.
+
+    **Fix**
+
+    <Steps>
+      <Step title="Remove the conflicting signature">
+        ```bash
+        codesign --remove-signature \
+          "/Applications/WeChat.app/Contents/Frameworks/vlc_plugins/librtp_mpeg4_plugin.dylib"
+        ```
+      </Step>
+      <Step title="Re-sign the whole app">
+        ```bash
+        codesign --force --deep --sign - /Applications/WeChat.app
+        ```
+      </Step>
+      <Step title="Restart WeChat and run wx init">
+        ```bash
+        killall WeChat && open /Applications/WeChat.app
+        # wait for WeChat to finish loading and log in, then:
+        sudo wx init
+        ```
+      </Step>
+    </Steps>
+  </Accordion>
+
+  <Accordion title="wx init fails: cannot find WeChat process">
+    **Symptom**
+
+    `wx init` exits with an error such as:
+
+    ```
+    找不到 WeChat 进程，请确认 WeChat 正在运行
+    ```
+
+    **Cause**
+
+    The scanner looks for a running process named `WeChat` (macOS), `wechat` / `weixin` (Linux), or `Weixin.exe` (Windows). If WeChat is not running, not fully logged in, or using a different process name, the scan finds nothing.
+
+    **Fix**
+
+    - Ensure WeChat is running and you are **fully logged in** (past the QR code screen) before running `wx init`.
+    - On macOS, verify that the ad-hoc codesign step completed without errors and that you restarted WeChat afterward.
+    - If your WeChat installation uses a non-standard process name, set the `wechat_process` field in `~/.wx-cli/config.json` to the correct name.
+
+    <Tip>
+      On Linux you can confirm the process name with: `cat /proc/$(pgrep -f wechat)/comm`
+    </Tip>
+  </Accordion>
+
+  <Accordion title="Permission denied on wx init">
+    **Symptom**
+
+    ```
+    打开 /proc/<pid>/mem 失败，请以 root 权限运行
+    ```
+
+    or on macOS:
+
+    ```
+    task_for_pid 失败 (kr=5)
+    ```
+
+    **Cause**
+
+    Reading another process's memory requires elevated privileges on all platforms.
+
+    **Fix**
+
+    <Tabs>
+      <Tab title="macOS / Linux">
+        Prefix `wx init` with `sudo`:
+
+        ```bash
+        sudo wx init
+        ```
+
+        wx-cli reads `$SUDO_USER` to resolve the correct home directory, so the config and keys are written to the original user's `~/.wx-cli/` rather than root's.
+      </Tab>
+      <Tab title="Windows">
+        Open PowerShell as Administrator (right-click → "Run as administrator"), then run:
+
+        ```powershell
+        wx init
+        ```
+      </Tab>
+    </Tabs>
+  </Accordion>
+
+  <Accordion title="wx sessions shows no data / empty results">
+    **Symptom**
+
+    `wx sessions` returns an empty list or the daemon reports that it cannot find any databases.
+
+    **Cause**
+
+    The `db_dir` in `~/.wx-cli/config.json` points to the wrong directory—either the default path doesn't match your WeChat installation, or a previous `wx init` detected a different account's directory.
+
+    **Fix**
+
+    <Steps>
+      <Step title="Check the current db_dir">
+        ```bash
+        cat ~/.wx-cli/config.json
+        ```
+        Verify that `db_dir` points to a directory containing `.db` files.
+      </Step>
+      <Step title="Re-run init to auto-detect the correct path">
+        ```bash
+        sudo wx init --force   # --force overwrites an existing config
+        ```
+      </Step>
+      <Step title="Or set db_dir manually">
+        Edit `~/.wx-cli/config.json` and set `db_dir` to the correct `db_storage` path, then restart the daemon:
+
+        ```bash
+        wx daemon stop
+        wx sessions
+        ```
+      </Step>
+    </Steps>
+  </Accordion>
+
+  <Accordion title="Daemon won't start">
+    **Symptom**
+
+    Every `wx` command hangs or immediately fails with a connection error. `wx daemon status` shows the daemon is not running.
+
+    **Fix**
+
+    <Steps>
+      <Step title="Check the daemon log for startup errors">
+        ```bash
+        cat ~/.wx-cli/daemon.log
+        ```
+      </Step>
+      <Step title="Stop any stale daemon process and retry">
+        ```bash
+        wx daemon stop
+        wx sessions   # daemon restarts automatically
+        ```
+      </Step>
+      <Step title="Verify the ~/.wx-cli/ directory is writable">
+        The daemon writes its socket, PID file, log, and cache files here.
+
+        ```bash
+        ls -la ~/.wx-cli/
+        ```
+
+        If the directory is owned by root (e.g., from a previous `sudo` run that created it), fix the ownership:
+
+        ```bash
+        sudo chown -R "$USER" ~/.wx-cli/
+        ```
+      </Step>
+    </Steps>
+
+    <Warning>
+      On macOS, a stale `daemon.sock` file can prevent the daemon from binding to the socket. `wx daemon stop` removes it, but if the daemon crashed it may not run. Delete `~/.wx-cli/daemon.sock` manually if needed.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="WeChat updated and wx init stopped working (macOS)">
+    **Symptom**
+
+    After a WeChat update, `sudo wx init` fails with a `task_for_pid` error even though it worked before.
+
+    **Cause**
+
+    WeChat updates re-sign the application bundle with Apple's certificate, overwriting the ad-hoc signature that allows `task_for_pid` to succeed.
+
+    **Fix**
+
+    The codesign step must be repeated after every WeChat update:
+
+    <Steps>
+      <Step title="Remove any conflicting signature (if needed)">
+        ```bash
+        codesign --remove-signature \
+          "/Applications/WeChat.app/Contents/Frameworks/vlc_plugins/librtp_mpeg4_plugin.dylib"
+        ```
+        Skip this step if `codesign --force --deep --sign -` succeeds without errors.
+      </Step>
+      <Step title="Re-apply the ad-hoc signature">
+        ```bash
+        codesign --force --deep --sign - /Applications/WeChat.app
+        ```
+      </Step>
+      <Step title="Restart WeChat and re-init">
+        ```bash
+        killall WeChat && open /Applications/WeChat.app
+        sudo wx init
+        ```
+      </Step>
+    </Steps>
+
+    <Tip>
+      Consider adding a post-update reminder or a shell alias that runs the codesign command before `wx init`.
+    </Tip>
+  </Accordion>
+
+  <Accordion title="Output is hard to read">
+    **Symptom**
+
+    The default YAML output is difficult to parse programmatically or in a pipeline.
+
+    **Fix**
+
+    Use the `--json` flag and pipe the output to `jq`:
+
+    ```bash
+    wx sessions --json | jq .
+    wx sessions --json | jq '.[0].display_name'
+    wx search "关键词" --json | jq '.[0].content'
+    wx history "张三" --json | jq '[.[] | {time: .timestamp, msg: .content}]'
+    ```
+
+    The `--json` flag is available on all commands that produce list output.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Getting debug information
+
+| Command | What it shows |
+|---|---|
+| `wx daemon logs` | Last N lines of daemon output (decryption events, query errors, cache hits) |
+| `wx daemon logs --follow` | Live-streamed daemon output; useful when reproducing a failure |
+| `wx daemon status` | Whether the daemon process is running and its PID |
+
+If you need to report a bug, include the output of `wx daemon logs` and the contents of `~/.wx-cli/config.json` (redact any paths you don't want to share).

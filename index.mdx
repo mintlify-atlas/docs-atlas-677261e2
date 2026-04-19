@@ -1,97 +1,76 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "wx-cli: query WeChat local data from the command line"
+description: "Query your WeChat chat history, contacts, moments, and more from the command line. A fast, privacy-first Rust tool with daemon architecture."
 ---
 
-## Setting up
+wx-cli is a command-line tool that lets you query your local WeChat data directly from the terminal. It decrypts WeChat's SQLCipher-encrypted databases on-the-fly using a background daemon, so your data never leaves your machine. Output defaults to YAML for easy reading and AI integration, with `--json` available for piping to `jq` and other tools.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install via npm, curl, or PowerShell on macOS, Linux, and Windows
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Initialize wx-cli and run your first query in minutes
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Command Reference" icon="terminal" href="/commands/messages">
+    Every command, flag, and option documented with real examples
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Architecture" icon="circle-nodes" href="/architecture">
+    How the daemon, cache, and decryption engine work together
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## What you can do
 
-Everything you need to create world-class documentation.
+wx-cli gives you full access to your locally cached WeChat data through a clean CLI interface.
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
+<CardGroup cols={2}>
+  <Card title="Messages & search" icon="message" href="/commands/messages">
+    Browse sessions, read history, search across all chats with filters for date, type, and more
   </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
+  <Card title="Moments (SNS)" icon="images" href="/commands/moments">
+    Read your Moments feed, search posts, and view like/comment notifications
   </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
+  <Card title="Contacts & groups" icon="users" href="/commands/contacts">
+    List contacts, search by name, and view group member lists
   </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
+  <Card title="Export & stats" icon="file-export" href="/commands/export">
+    Export chat history to Markdown, JSON, YAML, or plain text; view per-chat statistics
   </Card>
-</Columns>
+</CardGroup>
 
-## Need inspiration?
+## Key features
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+- **Zero-dependency binary** — single Rust binary, install with one command
+- **Millisecond responses** — daemon keeps decrypted databases cached; mtime-aware so it only re-decrypts when files change
+- **Fully local** — data never leaves your machine; real-time on-demand decryption
+- **AI-friendly output** — YAML by default to save tokens; switch to JSON with `--json`
+- **Cross-platform** — macOS (Apple Silicon + Intel), Linux (x86\_64 + arm64), Windows
+
+## Get started
+
+<Steps>
+  <Step title="Install wx-cli">
+    ```bash
+    npm install -g @jackwener/wx-cli
+    ```
+  </Step>
+  <Step title="Initialize (run once)">
+    Keep WeChat running, then:
+    ```bash
+    sudo wx init
+    ```
+    wx-cli scans WeChat's process memory to extract the database encryption key and saves your configuration to `~/.wx-cli/`.
+  </Step>
+  <Step title="Query your data">
+    ```bash
+    wx sessions          # recent conversations
+    wx history "Alice"   # chat history with Alice
+    wx search "meeting"  # search all messages
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  wx-cli only accesses **your own** WeChat data stored locally on your device. It does not connect to WeChat servers or transmit any data externally.
+</Note>

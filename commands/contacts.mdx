@@ -1,0 +1,172 @@
+---
+title: "wx contacts, members, favorites, and stats reference"
+description: "Reference for wx contacts, wx members, wx favorites, and wx stats. Search contacts, inspect group members, browse saved items, and analyze chat activity."
+---
+
+This page covers four commands for working with your WeChat social graph and data: `wx contacts` lists your contacts, `wx members` inspects group chat membership, `wx favorites` browses your saved items, and `wx stats` shows message activity analytics for any conversation.
+
+---
+
+## wx contacts
+
+List all WeChat contacts stored in your local database.
+
+```bash
+wx contacts [--query <name>] [-n <limit>] [--json]
+```
+
+### Flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `-q`, `--query` | string | — | Filter contacts by name (substring match). |
+| `-n`, `--limit` | integer | `50` | Maximum number of contacts to return. |
+| `--json` | boolean | false | Output JSON instead of the default YAML. |
+
+### Examples
+
+```bash
+# List up to 50 contacts (default)
+wx contacts
+
+# Filter contacts whose name contains "李"
+wx contacts --query "李"
+
+# Return up to 200 contacts
+wx contacts -n 200
+
+# Output as JSON for use with jq
+wx contacts --json | jq '.[0]'
+```
+
+<Tip>Combine `--query` and `-n` to narrow results when you have a large contact list: `wx contacts --query "张" -n 10`.</Tip>
+
+---
+
+## wx members
+
+List the members of a group chat. The group name supports fuzzy matching — you don't need an exact match.
+
+```bash
+wx members <group> [--json]
+```
+
+### Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `group` | Group chat name. Fuzzy-matched against locally cached group names. |
+
+### Flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--json` | boolean | false | Output JSON instead of the default YAML. |
+
+### Examples
+
+```bash
+# List members of a group (fuzzy match on name)
+wx members "AI交流群"
+
+# Output as JSON
+wx members "AI交流群" --json
+```
+
+<Note>Group membership data reflects your locally cached copy. If a member recently joined or left and you haven't opened the group in WeChat, the list may be out of date.</Note>
+
+---
+
+## wx favorites
+
+Browse your saved WeChat favorites (starred items). You can filter by content type, search by keyword, or combine both.
+
+```bash
+wx favorites [-n <limit>] [--type <type>] [--query <keyword>] [--json]
+```
+
+### Flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `-n`, `--limit` | integer | `50` | Maximum number of favorites to return. |
+| `--type` | string | — | Filter by content type. Accepted values: `text`, `image`, `article`, `card`, `video`. |
+| `-q`, `--query` | string | — | Keyword search within favorite content. |
+| `--json` | boolean | false | Output JSON instead of the default YAML. |
+
+### Type values
+
+| Value | Internal code | Description |
+|-------|--------------|-------------|
+| `text` | 1 | Plain text notes |
+| `image` | 2 | Images |
+| `article` | 5 | Web articles / links |
+| `card` | 19 | Contact cards |
+| `video` | 20 | Videos |
+
+### Examples
+
+```bash
+# List up to 50 favorites (default)
+wx favorites
+
+# Show only saved images
+wx favorites --type image
+
+# Search favorites for a keyword
+wx favorites --query "项目"
+
+# Combined: search for articles matching a keyword, up to 20 results
+wx favorites --type article --query "AI" -n 20
+
+# Output as JSON
+wx favorites --json
+```
+
+<Tip>Use `--query` with `--type article` to quickly find web pages you saved earlier without scrolling through everything.</Tip>
+
+---
+
+## wx stats
+
+Show chat statistics and activity analytics for a conversation. The chat name supports fuzzy matching.
+
+```bash
+wx stats <chat> [--since <YYYY-MM-DD>] [--until <YYYY-MM-DD>] [--json]
+```
+
+### Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `chat` | Name of the contact or group chat. Fuzzy-matched against locally cached names. |
+
+### Flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--since` | string (YYYY-MM-DD) | — | Only count messages on or after this date. |
+| `--until` | string (YYYY-MM-DD) | — | Only count messages on or before this date. |
+| `--json` | boolean | false | Output JSON instead of the default YAML. |
+
+### What stats are shown
+
+The response includes message counts and activity patterns for the specified conversation and time window, including total message volume broken down by sender and message type.
+
+### Examples
+
+```bash
+# Overall stats for a group
+wx stats "AI群"
+
+# Stats for a specific date range
+wx stats "AI群" --since 2026-01-01 --until 2026-03-31
+
+# Stats from a date to today
+wx stats "张三" --since 2026-04-01
+
+# Output as JSON
+wx stats "AI群" --since 2026-01-01 --json
+```
+
+<Note>Date filters use the start-of-day and end-of-day boundaries in local time. `--since 2026-01-01` includes messages from 2026-01-01 00:00:00 onward; `--until 2026-03-31` includes messages up to 2026-03-31 23:59:59.</Note>

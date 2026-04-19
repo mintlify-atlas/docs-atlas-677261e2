@@ -1,0 +1,152 @@
+---
+title: "wx export: save WeChat chat history to file or stdout"
+description: "Reference for wx export and the --json flag. Export WeChat conversations to Markdown, JSON, YAML, or text. Covers chat_type values for all commands."
+---
+
+This page covers the `wx export` command, which saves a conversation to a file or prints it to stdout, and explains how output formatting works across all wx-cli commands — including when to use `--json` and what the `chat_type` field values mean.
+
+## wx export \<chat\>
+
+Export the full history of a conversation to a file or stdout.
+
+```bash
+wx export <chat> [OPTIONS]
+```
+
+### Flags
+
+| Flag | Default | Description |
+|---|---|---|
+| `chat` (positional) | — | Contact or group name. Fuzzy-matched against your contacts. |
+| `--since YYYY-MM-DD` | — | Only include messages on or after this date. |
+| `--until YYYY-MM-DD` | — | Only include messages before or on this date. |
+| `-n`, `--limit <N>` | `500` | Maximum number of messages to export. Not a hard cap — increase freely. |
+| `-f`, `--format <FORMAT>` | `markdown` | Output format: `markdown`, `txt`, `json`, or `yaml`. |
+| `-o`, `--output <PATH>` | stdout | Write to a file instead of printing to the terminal. |
+
+<Note>
+When `-o` / `--output` is omitted, wx prints the exported content directly to stdout. This is useful for piping into other tools or previewing before saving.
+</Note>
+
+### Examples
+
+<CodeGroup>
+
+```bash Export to a Markdown file
+wx export "Alice" --format markdown -o alice.md
+```
+
+```bash Export with a date range
+wx export "Alice" --since 2026-01-01 --until 2026-03-31 -o alice-q1.md
+```
+
+```bash Export as JSON to stdout
+wx export "AI group" --format json
+```
+
+```bash Large history export
+wx export "Work group" -n 2000 --format markdown -o work-group.md
+```
+
+</CodeGroup>
+
+### Output format details
+
+| Format | What you get |
+|---|---|
+| `markdown` | Headings per message, sender in bold, timestamps as `###` subheadings. |
+| `txt` | Plain text with `[timestamp] Sender: content` per line. |
+| `json` | Full JSON from the daemon response — includes all message fields. |
+| `yaml` | YAML serialisation of the same data as `json`. |
+
+<Tip>
+The `--limit` default of 500 exists only to avoid accidental large dumps. For long conversations, pass `-n 2000` or higher — there is no upper bound enforced by the tool.
+</Tip>
+
+---
+
+## Output format: YAML vs JSON
+
+All commands that produce structured data (sessions, history, search, contacts, etc.) default to **YAML** output. YAML is more compact, easier to read in a terminal, and uses fewer tokens when fed to an AI agent. Pass `--json` to any command to switch to JSON instead.
+
+<Tabs>
+  <Tab title="YAML (default)">
+
+```bash
+wx sessions
+wx history "Alice"
+wx search "meeting"
+```
+
+Example output from `wx sessions`:
+
+```yaml
+- chat: Alice
+  chat_type: private
+  last_message: Sure, see you then
+  unread: 2
+  timestamp: "2026-04-18T21:00:00"
+- chat: Work group
+  chat_type: group
+  last_message: "Call at 3pm"
+  unread: 0
+  timestamp: "2026-04-18T20:30:00"
+```
+
+  </Tab>
+  <Tab title="JSON (--json)">
+
+```bash
+wx sessions --json
+wx history "Alice" --json
+wx search "keyword" --json | jq '.[0].content'
+```
+
+Example output from `wx sessions --json`:
+
+```json
+[
+  {
+    "chat": "Alice",
+    "chat_type": "private",
+    "last_message": "Sure, see you then",
+    "unread": 2,
+    "timestamp": "2026-04-18T21:00:00"
+  },
+  {
+    "chat": "Work group",
+    "chat_type": "group",
+    "last_message": "Call at 3pm",
+    "unread": 0,
+    "timestamp": "2026-04-18T20:30:00"
+  }
+]
+```
+
+  </Tab>
+</Tabs>
+
+<Note>
+The `wx export` command does **not** use `--json` for its output switch. Instead, use `-f json` or `-f yaml` to control the export format. The `--json` flag applies to commands that produce structured list output (sessions, history, search, contacts, etc.).
+</Note>
+
+---
+
+## chat\_type field values
+
+Sessions and messages output includes a `chat_type` field that identifies the kind of conversation.
+
+| Value | Description |
+|---|---|
+| `private` | One-on-one chat with a real contact. |
+| `group` | Group chat. |
+| `official_account` | Public accounts, subscription accounts, service accounts, and system senders such as `mphelper` and `qqsafe` notifications. |
+| `folded` | Aggregate entries — corresponds to WeChat's "folded subscription accounts" and "folded group chats" UI entries. |
+
+<Tip>
+To filter out noise when checking unread messages, use `--filter private,group` to see only real-person conversations and exclude `official_account` and `folded` entries:
+
+```bash
+wx unread --filter private,group
+```
+</Tip>
